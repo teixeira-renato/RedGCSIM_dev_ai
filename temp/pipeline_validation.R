@@ -144,7 +144,8 @@ cat('  [checkpoint10 saved]\n')
 # =========================================
 cat('\n=== Etapa 11: redistribuicao_causas_ivestigacao ===\n')
 out.file11 <- redistribuicao_causas_ivestigacao(dados_completos=out.file10,
-                                                  dados_redis=out.file8[['redistribuir']])
+                                                  dados_redis=out.file8[['redistribuir']],
+                                                  total_esp=TOTAL_ESP)
 for (col in paste0('obitos.', 10:13)) {
   if (col %in% names(out.file11)) {
     chk(sprintf('  11 investig: sum(%s)', col), sum(out.file11[[col]], na.rm=TRUE))

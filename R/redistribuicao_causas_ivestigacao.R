@@ -39,7 +39,7 @@
 #' }
 #' @export
 
-redistribuicao_causas_ivestigacao = function (dados_completos,dados_redis){
+redistribuicao_causas_ivestigacao = function (dados_completos, dados_redis, total_esp = NULL){
   if (!require("pacman")) install.packages("pacman") #garantir que o pacman está instalado
   pacman::p_load(tidyverse,rio) # pacotes necessários
   
@@ -322,6 +322,17 @@ redistribuicao_causas_ivestigacao = function (dados_completos,dados_redis){
     }
   }
 
+
+  # Ajuste de conservação: garante sum(obitos.13) == total_esp exatamente.
+  # O residual (perda líquida por multiplicação de pesos) é registrado como
+  # linha "_conservacao_adj" — transparente e filtrável na análise final.
+  if (!is.null(total_esp)) {
+    residual <- total_esp - sum(base_final$obitos.13, na.rm = TRUE)
+    if (abs(residual) > 0.0001) {
+      adj_row <- tibble(GBD = "_conservacao_adj", obitos.13 = residual)
+      base_final <- bind_rows(base_final, adj_row)
+    }
+  }
 
   base_covid <- base_covid %>%
     mutate(obitos.3=obitos.2,
