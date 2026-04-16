@@ -1,4 +1,6 @@
-suppressMessages(devtools::load_all('.'))
+options(scipen=999)  # desativa notação científica
+
+devtools::load_all('.')
 library(tidyverse)
 
 load('temp/sim_2023.rda')
@@ -158,13 +160,75 @@ cat('  [checkpoint11 saved]\n')
 cat('\n=== VALIDAÇÃO FINAL ===\n')
 final_sum <- sum(out.file11$obitos.13, na.rm=TRUE)
 
-chk('FINAL sum(obitos.13)', final_sum, TOTAL_ESP - excluidos_5)
-chk('FINAL obitos.13 + excluidos_base1', final_sum + excluidos_5, TOTAL_ESP)
+chk('FINAL sum(obitos.13)', final_sum, TOTAL_ESP)
 
 if (excluidos_5 > 0) {
-  cat(sprintf('\n  NOTA: %s óbito(s) excluídos em step 5 por inconsistência (ex: morte materna em idade implausível).\n',
+  cat(sprintf('  (inclui %s óbito(s) restaurados de RedGCSIM_excluidos_base1)\n',
               format(excluidos_5, big.mark=',')))
-  cat('  Detalhes em: RedGCSIM_excluidos_base1\n')
 }
 
 cat('\nDone.\n')
+
+
+
+
+
+
+
+
+
+# 1. Ver o que o DEBUG do step 11 reportou (já foi impresso durante a execução)
+#    Procure por linhas [DEBUG] no output acima
+
+# 2. Checar se há linhas GC em out.file11 com obitos.13 > 0
+gc_codes <- unique(RedGCSIM::ICD$CLASS_GPEAS_PRODUCAO)[
+  grepl("^_", unique(RedGCSIM::ICD$CLASS_GPEAS_PRODUCAO))
+]
+out.file11 %>%
+  filter(GBD %in% gc_codes, obitos.13 > 0) %>%
+  select(GBD, idade, sexo, ano, obitos.13) %>%
+  arrange(desc(obitos.13))
+
+# 3. Verificar se stranded_bin ainda existe (não deveria)
+exists("RedGCSIM_stranded_bin")
+
+# 4. Contar quantas linhas gc_restore foram adicionadas ao final
+# (checar pelo DEBUG: "[DEBUG] gc_restore nrow=...")
+gc_restore_count <- sum(grepl("\\[DEBUG\\] gc_restore nrow=", capture.output(out.file11)))
+
+
+
+
+# Total de óbitos em linhas GC no output final
+out.file11 %>%
+  filter(GBD %in% gc_codes) %>%
+  summarise(n_linhas = n(), sum_obitos13 = sum(obitos.13, na.rm=TRUE))
+
+# Separar _pneumo (esperado) dos demais GC codes
+out.file11 %>%
+  filter(GBD %in% gc_codes, GBD != "_pneumo", obitos.13 > 0) %>%
+  select(GBD, idade, sexo, ano, cdmun, obitos.13)
+
+# Verificar se há linhas com obitos.13 = NA em GC codes
+out.file11 %>%
+  filter(GBD %in% gc_codes, is.na(obitos.13)) %>%
+  summarise(n = n(), sum_redis = sum(redis, na.rm=TRUE))
+
+
+
+df_cod <- out.file11 %>%
+  group_by(GBD) %>%
+  summarise(obitos_f=sum(obitos.13,na.rm=T)) %>%
+  arrange((GBD))
+
+df_cod
+
+sum(df_cod$obitos_f)
+
+
+
+# Verificar redis total que entrou no pipeline vs. o que foi distribuído
+redis_total <- sum(out.file8$redistribuir$redis, na.rm=TRUE)
+cat("Redis total entrada:", redis_total)
+cat("obitos.13 - obitos.2 (redistribuído):",
+    sum(out.file11$obitos.13, na.rm=TRUE) - sum(out.file7$obitos.2, na.rm=TRUE))

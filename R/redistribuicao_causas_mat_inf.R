@@ -56,7 +56,19 @@ redistribuicao_causas_mat_inf = function (dados_completos, dados_redis){
     ) %>%
     mutate(c.red=ifelse(GBD %in% causas_mat & sexo == "Feminino" & idade%in%c("10","15","20","25","30","35","40","45","50"), '_maternas', NA_character_)) %>%
     left_join(dados_redis, by=c('cdmun','micro','meso',  'ano', 'sexo','idade', 'uf', 'c.red'))
-  
+
+  # Ghost detection _maternas: redis sem linha destino em base_final
+  ghost_mat <- dados_redis %>% filter(c.red == '_maternas') %>%
+    anti_join(base_final %>% filter(c.red == '_maternas') %>% distinct(cdmun,micro,meso,ano,sexo,idade,uf),
+              by = c('cdmun','micro','meso','ano','sexo','idade','uf'))
+  if (nrow(ghost_mat) > 0) {
+    gc_ghost <- ghost_mat %>% mutate(GBD = c.red, obitos.7 = 0)
+    assign("RedGCSIM_stranded_bin",
+           if (exists("RedGCSIM_stranded_bin", envir=.GlobalEnv))
+             bind_rows(get("RedGCSIM_stranded_bin", envir=.GlobalEnv), gc_ghost)
+           else gc_ghost, envir = .GlobalEnv)
+  }
+
   base_final <- calc_props(base = base_final, causa = causas_mat, prefix = "mat", obito_in = "obitos.7", obito_out = "obitos.8",
                            sexo_filtro = "Feminino",idades_filtro = idades_mat)
   
@@ -68,7 +80,19 @@ redistribuicao_causas_mat_inf = function (dados_completos, dados_redis){
     ) %>%
     mutate(c.red=ifelse(GBD %in% causas_inf & idade %in% c("Early Neonatal","Post Neonatal","Late Neonatal","<1 year"), '_infant_neonat', NA_character_)) %>%
     left_join(dados_redis, by=c('cdmun','micro','meso',  'ano', 'sexo','idade', 'uf', 'c.red'))
-  
+
+  # Ghost detection _infant_neonat: redis sem linha destino em base_final
+  ghost_inf <- dados_redis %>% filter(c.red == '_infant_neonat') %>%
+    anti_join(base_final %>% filter(c.red == '_infant_neonat') %>% distinct(cdmun,micro,meso,ano,sexo,idade,uf),
+              by = c('cdmun','micro','meso','ano','sexo','idade','uf'))
+  if (nrow(ghost_inf) > 0) {
+    gc_ghost <- ghost_inf %>% mutate(GBD = c.red, obitos.8 = 0)
+    assign("RedGCSIM_stranded_bin",
+           if (exists("RedGCSIM_stranded_bin", envir=.GlobalEnv))
+             bind_rows(get("RedGCSIM_stranded_bin", envir=.GlobalEnv), gc_ghost)
+           else gc_ghost, envir = .GlobalEnv)
+  }
+
   base_final <- calc_props(base = base_final, causa = causas_inf, prefix = "infant", obito_in = "obitos.8", obito_out = "obitos.9",sexo_filtro = NULL,idades_filtro = idades_inf)
   
   return(base_final)

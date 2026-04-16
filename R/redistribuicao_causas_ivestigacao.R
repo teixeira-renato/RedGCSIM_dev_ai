@@ -75,7 +75,19 @@ redistribuicao_causas_ivestigacao = function (dados_completos,dados_redis){
     ) %>%
     mutate(c.red=ifelse(GBD %in% ICD_x59$target, '_x59', NA_character_)) %>%
     left_join(dados_redis, by=c('cdmun','micro','meso',  'ano', 'sexo','idade', 'uf', 'c.red'))
-  
+
+  # Ghost detection _x59: redis sem linha destino em base_final
+  ghost_x59 <- dados_redis %>% filter(c.red == '_x59') %>%
+    anti_join(base_final %>% filter(c.red == '_x59') %>% distinct(cdmun,micro,meso,ano,sexo,idade,uf),
+              by = c('cdmun','micro','meso','ano','sexo','idade','uf'))
+  if (nrow(ghost_x59) > 0) {
+    gc_ghost <- ghost_x59 %>% mutate(GBD = c.red, obitos.9 = 0)
+    assign("RedGCSIM_stranded_bin",
+           if (exists("RedGCSIM_stranded_bin", envir=.GlobalEnv))
+             bind_rows(get("RedGCSIM_stranded_bin", envir=.GlobalEnv), gc_ghost)
+           else gc_ghost, envir = .GlobalEnv)
+  }
+
   base_final <- calc_investig (base = base_final, causa = c(trans,mat,"other_causes_all","other_causes-lri","other_desnutricao_all_ages"),
                             causa_II = road, data_weight = ICD_x59, fixed_weight = inj, prefix = "x59", obito_in = "obitos.9", obito_out = "obitos.10")
   # ============================================================
@@ -94,6 +106,18 @@ redistribuicao_causas_ivestigacao = function (dados_completos,dados_redis){
     ) %>%
     mutate(c.red=ifelse(GBD %in% ICD_y34$target, '_y34', NA_character_)) %>%
     left_join(dados_redis, by=c('cdmun','micro','meso',  'ano', 'sexo','idade', 'uf', 'c.red'))
+
+  # Ghost detection _y34: redis sem linha destino em base_final
+  ghost_y34 <- dados_redis %>% filter(c.red == '_y34') %>%
+    anti_join(base_final %>% filter(c.red == '_y34') %>% distinct(cdmun,micro,meso,ano,sexo,idade,uf),
+              by = c('cdmun','micro','meso','ano','sexo','idade','uf'))
+  if (nrow(ghost_y34) > 0) {
+    gc_ghost <- ghost_y34 %>% mutate(GBD = c.red, obitos.10 = 0)
+    assign("RedGCSIM_stranded_bin",
+           if (exists("RedGCSIM_stranded_bin", envir=.GlobalEnv))
+             bind_rows(get("RedGCSIM_stranded_bin", envir=.GlobalEnv), gc_ghost)
+           else gc_ghost, envir = .GlobalEnv)
+  }
 
   base_final <- calc_investig (base = base_final, causa = c(trans,mat,"other_causes_all","other_causes-lri","other_desnutricao_all_ages"),
                                causa_II = road, data_weight = ICD_y34, fixed_weight = c(inj,dcnt), prefix = "y34", obito_in = "obitos.10", obito_out = "obitos.11")
@@ -273,30 +297,30 @@ redistribuicao_causas_ivestigacao = function (dados_completos,dados_redis){
     }
   }
 
-  # Opção 3: adiciona ao output todos os GC stranded acumulados durante o pipeline.
+  # Restaura todos os GC stranded acumulados durante o pipeline.
   # Esses óbitos ficam na base com o código GC original; obitos.3..13 = redis.
-  cat(sprintf('[DEBUG] sum(base_final$obitos.13) before gc_restore: %s\n',
-              format(sum(base_final$obitos.13, na.rm=TRUE), big.mark=',')))
-  cat(sprintf('[DEBUG] ghost_all nrow=%d, sum(redis)=%s\n',
-              nrow(ghost_all), format(sum(ghost_all$redis, na.rm=TRUE), big.mark=',')))
   if (exists("RedGCSIM_stranded_bin", envir = .GlobalEnv)) {
     stranded_bin <- get("RedGCSIM_stranded_bin", envir = .GlobalEnv)
-    cat(sprintf('[DEBUG] stranded_bin nrow=%d, sum(redis)=%s\n',
-                nrow(stranded_bin), format(sum(stranded_bin$redis, na.rm=TRUE), big.mark=',')))
     if (nrow(stranded_bin) > 0) {
       gc_restore <- stranded_bin %>%
         mutate(obitos.3  = redis, obitos.4  = redis, obitos.5  = redis,
                obitos.6  = redis, obitos.7  = redis, obitos.8  = redis,
                obitos.9  = redis, obitos.10 = redis, obitos.11 = redis,
                obitos.12 = redis, obitos.13 = redis)
-      cat(sprintf('[DEBUG] gc_restore nrow=%d, sum(obitos.13)=%s\n',
-                  nrow(gc_restore), format(sum(gc_restore$obitos.13, na.rm=TRUE), big.mark=',')))
       base_final <- bind_rows(base_final, gc_restore)
     }
     rm("RedGCSIM_stranded_bin", envir = .GlobalEnv)
   }
-  cat(sprintf('[DEBUG] sum(base_final$obitos.13) after gc_restore: %s\n',
-              format(sum(base_final$obitos.13, na.rm=TRUE), big.mark=',')))
+
+  # Restaura óbitos excluídos em prepara_base_generalizada (ex: materna em idade implausível).
+  # Esses óbitos são mantidos com o código GBD original e obitos.13 = contagem original.
+  if (exists("RedGCSIM_excluidos_base1", envir = .GlobalEnv)) {
+    excluidos <- get("RedGCSIM_excluidos_base1", envir = .GlobalEnv)
+    if (nrow(excluidos) > 0) {
+      excluidos_restore <- excluidos %>% mutate(obitos.13 = obitos)
+      base_final <- bind_rows(base_final, excluidos_restore)
+    }
+  }
 
 
   base_covid <- base_covid %>%
