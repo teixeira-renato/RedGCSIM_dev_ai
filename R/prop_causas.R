@@ -40,8 +40,8 @@ prop_causas <- function(dados) {
     mutate(mu = sum(obitos, na.rm = TRUE),
            pr.mu = obitos / sum(obitos, na.rm = TRUE)) %>%
     ungroup() %>%
-    group_by(cdmun, ano, GBD, idade, sexo, uf) %>%
-    mutate(pop.id.s = pop / sum(pop, na.rm = TRUE)) %>%
+    group_by(cdmun, ano, GBD, uf) %>%
+    mutate(pop.id.s = pop / sum(pop, na.rm = TRUE)) %>%  # proporção por (idade × sexo) sobre total do município/GBD/ano
     ungroup() %>%
     group_by(cdmun, ano, GBD, sexo, uf) %>%
     mutate(pop.id = pop / sum(pop, na.rm = TRUE)) %>%

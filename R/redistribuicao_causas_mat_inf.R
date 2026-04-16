@@ -49,18 +49,24 @@ redistribuicao_causas_mat_inf = function (dados_completos, dados_redis){
   idades_inf   <- c("Early Neonatal","Post Neonatal","Late Neonatal","<1 year")
   
   base_final <- dados_completos %>%
-    select(-starts_with("pr."), -starts_with("ob."), 
-           -redis, -redis.2, -redis.3, -redis.4, -c.red) %>%
-    mutate(c.red=ifelse(GBD %in% causas_mat & sexo == "Feminino" & idade%in%c("10","15","20","25","30","35","40","45","50"), '_maternas', NA)) %>%
+    select(
+      -any_of(grep("^pr\\.", names(.), value = TRUE)),
+      -any_of(grep("^ob\\.", names(.), value = TRUE)),
+      -any_of(c("redis", "redis.2", "redis.3", "redis.4", "c.red"))
+    ) %>%
+    mutate(c.red=ifelse(GBD %in% causas_mat & sexo == "Feminino" & idade%in%c("10","15","20","25","30","35","40","45","50"), '_maternas', NA_character_)) %>%
     left_join(dados_redis, by=c('cdmun','micro','meso',  'ano', 'sexo','idade', 'uf', 'c.red'))
   
   base_final <- calc_props(base = base_final, causa = causas_mat, prefix = "mat", obito_in = "obitos.7", obito_out = "obitos.8",
                            sexo_filtro = "Feminino",idades_filtro = idades_mat)
   
   base_final <- base_final %>%
-    select(-starts_with("pr."), -starts_with("ob."), 
-           -redis, -redis.2, -redis.3, -redis.4, -c.red) %>%
-    mutate(c.red=ifelse(GBD %in% causas_inf & idade %in% c("Early Neonatal","Post Neonatal","Late Neonatal","<1 year"), '_infant_neonat', NA)) %>%
+    select(
+      -any_of(grep("^pr\\.", names(.), value = TRUE)),
+      -any_of(grep("^ob\\.", names(.), value = TRUE)),
+      -any_of(c("redis", "redis.2", "redis.3", "redis.4", "c.red"))
+    ) %>%
+    mutate(c.red=ifelse(GBD %in% causas_inf & idade %in% c("Early Neonatal","Post Neonatal","Late Neonatal","<1 year"), '_infant_neonat', NA_character_)) %>%
     left_join(dados_redis, by=c('cdmun','micro','meso',  'ano', 'sexo','idade', 'uf', 'c.red'))
   
   base_final <- calc_props(base = base_final, causa = causas_inf, prefix = "infant", obito_in = "obitos.8", obito_out = "obitos.9",sexo_filtro = NULL,idades_filtro = idades_inf)

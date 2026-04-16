@@ -73,7 +73,7 @@ redistribuicao_causas_ivestigacao = function (dados_completos,dados_redis){
       -any_of(grep("^ob\\.", names(.), value = TRUE)),
       -any_of(c("redis", "redis.2", "redis.3", "redis.4", "c.red","weight"))
     ) %>%
-    mutate(c.red=ifelse(GBD %in% ICD_x59$target, '_x59', NA)) %>%
+    mutate(c.red=ifelse(GBD %in% ICD_x59$target, '_x59', NA_character_)) %>%
     left_join(dados_redis, by=c('cdmun','micro','meso',  'ano', 'sexo','idade', 'uf', 'c.red'))
   
   base_final <- calc_investig (base = base_final, causa = c(trans,mat,"other_causes_all","other_causes-lri","other_desnutricao_all_ages"),
@@ -92,7 +92,7 @@ redistribuicao_causas_ivestigacao = function (dados_completos,dados_redis){
       -any_of(grep("^ob\\.", names(.), value = TRUE)),
       -any_of(c("redis", "redis.2", "redis.3", "redis.4", "c.red","weight"))
     ) %>%
-    mutate(c.red=ifelse(GBD %in% ICD_y34$target, '_y34', NA)) %>%
+    mutate(c.red=ifelse(GBD %in% ICD_y34$target, '_y34', NA_character_)) %>%
     left_join(dados_redis, by=c('cdmun','micro','meso',  'ano', 'sexo','idade', 'uf', 'c.red'))
 
   base_final <- calc_investig (base = base_final, causa = c(trans,mat,"other_causes_all","other_causes-lri","other_desnutricao_all_ages"),
@@ -114,6 +114,9 @@ redistribuicao_causas_ivestigacao = function (dados_completos,dados_redis){
                            age == "60 emais" ~ '_pneumo_idoso',))%>%
     select(-age)
 
+  # data_weight deduplificado por (target, c.red): evita join many-to-many que triplicaria as linhas
+  pneumo_weight <- distinct(pneumo, target, c.red, .keep_all = TRUE)
+
   base.r.pneumo <- dados_redis%>%
     filter(c.red == "_pneumo")%>%
     mutate(c.red=case_when(c.red == "_pneumo" & idade %in% c("Early Neonatal","Post Neonatal","Late Neonatal","<1 year","0","5") ~ '_pneumo_inf',
@@ -132,7 +135,8 @@ redistribuicao_causas_ivestigacao = function (dados_completos,dados_redis){
     left_join(base.r.pneumo, by=c('cdmun','micro','meso',  'ano', 'sexo','idade', 'uf', 'c.red'))
 
   base_final <- calc_investig (base = base_final, causa = c(trans,mat,"other_causes_all","other_causes-lri","other_desnutricao_all_ages"),
-                               causa_II = road, data_weight = pneumo, fixed_weight = c("_pneumo",inj,dcnt), prefix = "pne", obito_in = "obitos.11", obito_out = "obitos.12")
+                               causa_II = road, data_weight = pneumo_weight, fixed_weight = c("_pneumo",inj,dcnt), prefix = "pne", obito_in = "obitos.11", obito_out = "obitos.12",
+                               extra_by = "c.red")
 
   # ============================================================
   # 5. Garbage All
@@ -146,7 +150,7 @@ redistribuicao_causas_ivestigacao = function (dados_completos,dados_redis){
       -any_of(grep("^ob\\.", names(.), value = TRUE)),
       -any_of(c("redis", "redis.2", "redis.3", "redis.4", "c.red","weight"))
     ) %>%
-    mutate(c.red=ifelse(GBD%in%"_pneumo",NA,'_all')) %>%
+    mutate(c.red=ifelse(GBD%in%"_pneumo", NA_character_, '_all')) %>%
     left_join(dados_redis, by=c('cdmun','micro','meso',  'ano', 'sexo','idade', 'uf', 'c.red'))
 
   ###Proporções _all
@@ -207,7 +211,6 @@ redistribuicao_causas_ivestigacao = function (dados_completos,dados_redis){
            ob.rg=sum(ob,na.rm=T)) %>%
     select(-ob)
 
-
   base_final <- base_final %>%
     left_join(muni.all, by=c('cdmun','micro','meso', 'GBD','idade', 'ano', 'sexo', 'uf')) %>%
     left_join(micro.all, by=c('micro','meso', 'GBD','idade', 'ano', 'sexo', 'uf')) %>%
@@ -230,6 +233,70 @@ redistribuicao_causas_ivestigacao = function (dados_completos,dados_redis){
                                    ifelse(!is.na(all.3), obitos.12+all.3,
                                           ifelse(!is.na(all.4), obitos.12+all.4,
                                                  ifelse(!is.na(all.5), obitos.12+all.5, obitos.12))))))
+
+  # Opção 3a — stranded por cascata: redis > 0 mas todos os 5 níveis falharam
+  stranded_all <- base_final[
+    !is.na(base_final$redis) & base_final$redis > 0 &
+    is.na(base_final$all.1) & is.na(base_final$all.2) &
+    is.na(base_final$all.3) & is.na(base_final$all.4) &
+    is.na(base_final$all.5), ]
+  if (nrow(stranded_all) > 0) {
+    gc_all <- distinct(stranded_all, cdmun, micro, meso, idade, ano, sexo, uf, c.red, redis) %>%
+      mutate(GBD = c.red, obitos.12 = 0)
+    if (exists("RedGCSIM_stranded_bin", envir = .GlobalEnv)) {
+      assign("RedGCSIM_stranded_bin",
+             bind_rows(get("RedGCSIM_stranded_bin", envir = .GlobalEnv), gc_all),
+             envir = .GlobalEnv)
+    } else {
+      assign("RedGCSIM_stranded_bin", gc_all, envir = .GlobalEnv)
+    }
+  }
+
+  # Opção 3b — ghost cells: entradas em dados_redis para c.red='_all' sem nenhuma
+  # linha em base_final (células onde 100% das mortes eram GC — sem completos).
+  # O left_join não cria linhas novas, então esse redis cai no vazio sem detecção.
+  cells_with_all <- base_final %>%
+    filter(!is.na(c.red) & c.red == '_all') %>%
+    distinct(cdmun, micro, meso, ano, sexo, idade, uf)
+  ghost_all <- dados_redis %>%
+    filter(c.red == '_all') %>%
+    anti_join(cells_with_all, by = c('cdmun','micro','meso','ano','sexo','idade','uf'))
+  if (nrow(ghost_all) > 0) {
+    gc_ghost <- ghost_all %>%
+      mutate(GBD = c.red, obitos.12 = 0)
+    if (exists("RedGCSIM_stranded_bin", envir = .GlobalEnv)) {
+      assign("RedGCSIM_stranded_bin",
+             bind_rows(get("RedGCSIM_stranded_bin", envir = .GlobalEnv), gc_ghost),
+             envir = .GlobalEnv)
+    } else {
+      assign("RedGCSIM_stranded_bin", gc_ghost, envir = .GlobalEnv)
+    }
+  }
+
+  # Opção 3: adiciona ao output todos os GC stranded acumulados durante o pipeline.
+  # Esses óbitos ficam na base com o código GC original; obitos.3..13 = redis.
+  cat(sprintf('[DEBUG] sum(base_final$obitos.13) before gc_restore: %s\n',
+              format(sum(base_final$obitos.13, na.rm=TRUE), big.mark=',')))
+  cat(sprintf('[DEBUG] ghost_all nrow=%d, sum(redis)=%s\n',
+              nrow(ghost_all), format(sum(ghost_all$redis, na.rm=TRUE), big.mark=',')))
+  if (exists("RedGCSIM_stranded_bin", envir = .GlobalEnv)) {
+    stranded_bin <- get("RedGCSIM_stranded_bin", envir = .GlobalEnv)
+    cat(sprintf('[DEBUG] stranded_bin nrow=%d, sum(redis)=%s\n',
+                nrow(stranded_bin), format(sum(stranded_bin$redis, na.rm=TRUE), big.mark=',')))
+    if (nrow(stranded_bin) > 0) {
+      gc_restore <- stranded_bin %>%
+        mutate(obitos.3  = redis, obitos.4  = redis, obitos.5  = redis,
+               obitos.6  = redis, obitos.7  = redis, obitos.8  = redis,
+               obitos.9  = redis, obitos.10 = redis, obitos.11 = redis,
+               obitos.12 = redis, obitos.13 = redis)
+      cat(sprintf('[DEBUG] gc_restore nrow=%d, sum(obitos.13)=%s\n',
+                  nrow(gc_restore), format(sum(gc_restore$obitos.13, na.rm=TRUE), big.mark=',')))
+      base_final <- bind_rows(base_final, gc_restore)
+    }
+    rm("RedGCSIM_stranded_bin", envir = .GlobalEnv)
+  }
+  cat(sprintf('[DEBUG] sum(base_final$obitos.13) after gc_restore: %s\n',
+              format(sum(base_final$obitos.13, na.rm=TRUE), big.mark=',')))
 
 
   base_covid <- base_covid %>%

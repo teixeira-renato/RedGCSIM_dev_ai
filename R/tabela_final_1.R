@@ -40,6 +40,7 @@ tabela_final_1 = function(x){
   ###Arquivo com as categoria das causas e os CID
   causas <- RedGCSIM::ICD
   colnames(causas)[1] <- 'CAUSABAS'
+  causas <- distinct(causas, CAUSABAS, .keep_all = TRUE)  # evita duplicação de óbitos por CID repetido na tabela ICD
 
   ###Merge Causas GBD
   base <- left_join(x, causas, by='CAUSABAS')

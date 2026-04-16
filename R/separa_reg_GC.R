@@ -73,9 +73,11 @@ redis=unique(ICD$CLASS_GPEAS_PRODUCAO)[grepl(pattern = "^_",x = unique(ICD$CLASS
   colnames(base.r)[5] <- 'c.red'
 
   # Montagem da Base SEM os GC ----
-
+  # _pneumo é excluído de base.4: seus óbitos já entram em base.r (redis) e serão
+  # redistribuídos de volta para as linhas _pneumo via calc_investig (fixed_weight).
+  # Incluir _pneumo aqui causaria dupla contagem no total final.
   base.4 <- dados_sem_ign %>%
-    filter(GBD != "covid_19")%>%
+    filter(GBD != "covid_19", GBD != "_pneumo") %>%
     filter(GBD %in% causas) %>%
     select(cdmun:meso, obitos.2, uf)
 
@@ -119,7 +121,10 @@ redis=unique(ICD$CLASS_GPEAS_PRODUCAO)[grepl(pattern = "^_",x = unique(ICD$CLASS
 
   ###Merge da base limpa com a base de óbitos, considerando as causas sem GB
 
-  base.5 <-   left_join(base.5, base.4, by=c('cdmun','micro','meso','idade','GBD', 'sexo', 'ano', 'uf'))
+  base.5 <- left_join(base.5, base.4, by=c('cdmun','micro','meso','idade','GBD', 'sexo', 'ano', 'uf'))
+
+  # Garante obitos.2 = 0 onde não há óbitos registrados (ex: linhas _pneumo excluídas de base.4)
+  base.5$obitos.2[is.na(base.5$obitos.2)] <- 0
 
   out.file <- list(redistribuir=base.r,completos=base.5)
 

@@ -4,3 +4,5 @@
 .httr-oauth
 .DS_Store
 .quarto
+temp/*.rda
+temp/*.rds

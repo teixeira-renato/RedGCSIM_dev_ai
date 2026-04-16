@@ -50,6 +50,15 @@ separa_reg_ing = function(x){
     filter(cdmun %notin% notwantedlevels & sexo!='IGN' & idade!=999 & idade!='IGN')
 
   if ((sum(nrow(dados_completos),nrow(ign)))==nrow(x)) print("Todos os registros estão separados nas bases de ignorados ou dados completos")
+  total_obitos_x   <- sum(x$obitos, na.rm = TRUE)
+  total_obitos_out <- sum(dados_completos$obitos, na.rm = TRUE) + sum(ign$ign, na.rm = TRUE)
+  if (total_obitos_out == total_obitos_x) {
+    print(paste0("Conservação de óbitos OK: ", total_obitos_x, " óbitos"))
+  } else {
+    warning(paste0("DIVERGÊNCIA de óbitos em separa_reg_ing! Entrada: ", total_obitos_x,
+                   " | Saída: ", total_obitos_out,
+                   " | Diferença: ", total_obitos_out - total_obitos_x))
+  }
 
   out.file <- list(ignorados = ign, completos = dados_completos)
 

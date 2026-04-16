@@ -87,7 +87,7 @@
   sexo <- unique(base_dados_completos$sexo)
   anos <- unique(base_dados_completos$ano)
   # age <- as.character(c(seq(0,90,5)))
-  age <- c(seq(0,90,5), "Early Neonatal", "Post Neonatal", "Late Neonatal")
+  age <- c(seq(0,90,5), "Early Neonatal", "Post Neonatal", "Late Neonatal", "<1 year")
   mat <-c(causas[grepl("^materna",causas)])
   infant <-c(causas[grepl("^infant",causas)])
   base.1 <- expand.grid(cdmun,anos,age,sexo,causa)
@@ -100,7 +100,24 @@
       GBD %in% mat & sexo == "Masculino"  ~ 1,
       # GBD %in% infant & idade %notin% c("Early Neonatal","Post Neonatal","Late Neonatal","<1 year") ~ 1,
       TRUE ~ 0
-    ))%>%
+    ))
+
+  # Captura óbitos reais que caem em combinações excluídas (ex: morte materna com idade implausível)
+  excluidos_base1 <- base_dados_completos %>%
+    semi_join(base.1 %>% filter(to_exclude == 1),
+              by = c("cdmun", "ano", "idade", "sexo", "GBD")) %>%
+    mutate(motivo_exclusao = case_when(
+      GBD %in% mat & idade %in% c("Early Neonatal","Post Neonatal","Late Neonatal","<1 year","0","5","60","65","70","75","80","85","90") ~ "materna_idade_implausivel",
+      GBD %in% mat & sexo == "Masculino" ~ "materna_sexo_masculino",
+      TRUE ~ "outro"
+    ))
+  if (nrow(excluidos_base1) > 0) {
+    cat(sprintf('[prepara_base_generalizada] %d óbito(s) excluídos por inconsistência (soma: %s) — salvos em RedGCSIM_excluidos_base1\n',
+                nrow(excluidos_base1), format(sum(excluidos_base1$obitos, na.rm = TRUE), big.mark = ',')))
+    assign("RedGCSIM_excluidos_base1", excluidos_base1, envir = .GlobalEnv)
+  }
+
+  base.1 <- base.1 %>%
     filter(to_exclude==0)%>%
     select(-to_exclude)
 
